@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -11,14 +12,22 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	yaml "gopkg.in/yaml.v2"
 
 	"gortc.io/stun"
 )
 
+type Config struct {
+	Net     string `yaml:"Net"`
+	Address string `yaml:"Address"`
+	Profile bool   `yaml:"Profile"`
+}
+
 var (
-	network = flag.String("net", "udp", "network to listen")
-	address = flag.String("addr", "0.0.0.0:3478", "address to listen")
-	profile = flag.Bool("profile", false, "profile")
+	network     = flag.String("net", "udp", "network to listen")
+	address     = flag.String("addr", "0.0.0.0:3479", "address to listen")
+	profile     = flag.Bool("profile", false, "profile")
+	config_path = flag.String("config", "./config.yaml", "profile")
 )
 
 // Server is RFC 5389 basic server implementation.
@@ -142,17 +151,30 @@ func normalize(address string) string {
 
 func main() {
 	flag.Parse()
-	if *profile {
+	var _config Config
+	yamlFile, err := ioutil.ReadFile(*config_path)
+	if err != nil {
+		log.Printf("read config file failed,path:%v,err:%v", *config_path, err)
+		_config.Net = *network
+		_config.Address = *address
+		_config.Profile = *profile
+	} else {
+		err = yaml.Unmarshal(yamlFile, &_config)
+		if err !=nil{
+			log.Panicln("err:",err)
+		}
+		log.Printf("load config file:%+v",_config)
+	}
+	if _config.Profile {
 		go func() {
 			log.Println(http.ListenAndServe("localhost:6060", nil))
 		}()
 	}
-	switch *network {
+	switch _config.Net {
 	case "udp":
-		normalized := normalize(*address)
-		fmt.Println("gortc/stund listening on", normalized, "via", *network)
-		log.Fatal(ListenUDPAndServe(*network, normalized))
+		normalized := normalize(_config.Address)
+		fmt.Println("gortc/stund listening on", normalized, "via", _config.Net)
 	default:
-		log.Fatalln("unsupported network:", *network)
+		log.Fatalln("unsupported network:", _config.Net)
 	}
 }
